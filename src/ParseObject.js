@@ -2411,7 +2411,7 @@ const DefaultController = {
       });
 
       return Promise.all(filesSaved).then(() => {
-        let objectError = null;
+        const objectErrors = [];
         return continueWhile(
           () => {
             return pending.length > 0;
@@ -2458,11 +2458,13 @@ const DefaultController = {
                     mapIdForPin[objectId] = obj._localId;
                     obj._handleSaveResponse(responses[index].success, status);
                   } else {
-                    if (!objectError && responses[index].hasOwnProperty('error')) {
+                    if (responses[index].hasOwnProperty('error')) {
                       const serverError = responses[index].error;
-                      objectError = new ParseError(serverError.code, serverError.error);
-                      // Cancel the rest of the save
-                      pending = [];
+                      objectErrors.push({
+                        object: obj,
+                        index: index,
+                        error: new ParseError(serverError.code, serverError.error),
+                      });
                     }
                     obj._handleSaveError();
                   }
@@ -2495,8 +2497,12 @@ const DefaultController = {
             return when(batchTasks);
           }
         ).then(async () => {
-          if (objectError) {
-            return Promise.reject(objectError);
+          if (objectErrors.length > 0) {
+            return Promise.reject({
+              code: objectErrors.at(0).error.code,
+              message: objectErrors.at(0).error.message,
+              errors: objectErrors,
+            });
           }
           for (const object of target) {
             await localDatastore._updateLocalIdForObject(mapIdForPin[object.id], object);

@@ -2524,12 +2524,11 @@ describe('ParseObject', () => {
       objects[i] = new ParseObject('Person');
     }
     ParseObject.saveAll(objects).then(null, error => {
-      // The second batch never ran
-      expect(xhrs[1].open.mock.calls.length).toBe(0);
       expect(objects[19].dirty()).toBe(false);
-      expect(objects[20].dirty()).toBe(true);
+      expect(objects[20].dirty()).toBe(false);
 
       expect(error.message).toBe('first error');
+      expect(error.errors.length).toBe(3);
       done();
     });
     await flushPromises();
@@ -2557,6 +2556,15 @@ describe('ParseObject', () => {
       { success: { objectId: 'pid19' } },
     ]);
     xhrs[0].onreadystatechange();
+
+    await flushPromises();
+
+    xhrs[1].responseText = JSON.stringify([
+      { success: { objectId: 'pid20' } },
+      { error: { code: -1, error: 'third error' } },
+    ]);
+    xhrs[1].onreadystatechange();
+
     jest.runAllTicks();
   });
 });
