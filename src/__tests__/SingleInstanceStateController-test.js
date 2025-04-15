@@ -1,5 +1,6 @@
 jest.dontMock('../decode');
 jest.dontMock('../encode');
+jest.dontMock('../CoreManager');
 jest.dontMock('../ObjectStateMutations');
 jest.dontMock('../ParseFile');
 jest.dontMock('../ParseGeoPoint');
@@ -7,6 +8,7 @@ jest.dontMock('../ParseOp');
 jest.dontMock('../promiseUtils');
 jest.dontMock('../SingleInstanceStateController');
 jest.dontMock('../TaskQueue');
+jest.dontMock('./test_helpers/flushPromises');
 
 const mockObject = function () {};
 mockObject.registerSubclass = function () {};
@@ -18,6 +20,9 @@ const ParseGeoPoint = require('../ParseGeoPoint').default;
 const ParseOps = require('../ParseOp');
 const SingleInstanceStateController = require('../SingleInstanceStateController');
 const TaskQueue = require('../TaskQueue');
+const flushPromises = require('./test_helpers/flushPromises');
+const CoreManager = require('../CoreManager');
+CoreManager.setParseObject(mockObject);
 
 describe('SingleInstanceStateController', () => {
   it('returns null state for an unknown object', () => {
@@ -537,7 +542,7 @@ describe('SingleInstanceStateController', () => {
     expect(called).toEqual([true, false, false]);
     p2Resolve();
     await p2;
-    await new Promise(resolve => setImmediate(resolve));
+    await flushPromises();
     expect(called).toEqual([true, true, true]);
   });
 

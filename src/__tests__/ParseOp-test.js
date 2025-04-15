@@ -1,6 +1,7 @@
 jest.dontMock('../arrayContainsObject');
 jest.dontMock('../encode');
 jest.dontMock('../decode');
+jest.dontMock('../CoreManager');
 jest.dontMock('../ParseOp');
 jest.dontMock('../unique');
 
@@ -30,17 +31,14 @@ jest.setMock('../ParseRelation', mockRelation);
 const ParseRelation = require('../ParseRelation');
 const ParseObject = require('../ParseObject');
 const ParseOp = require('../ParseOp');
-const {
-  Op,
-  SetOp,
-  UnsetOp,
-  IncrementOp,
-  AddOp,
-  AddUniqueOp,
-  RemoveOp,
-  RelationOp,
-  opFromJSON,
-} = ParseOp;
+const CoreManager = require('../CoreManager');
+jest.spyOn(CoreManager, 'getParseObject').mockImplementation(() => require('../ParseObject'));
+jest
+  .spyOn(CoreManager, 'getEventuallyQueue')
+  .mockImplementation(() => require('../EventuallyQueue'));
+
+const { Op, SetOp, UnsetOp, IncrementOp, AddOp, AddUniqueOp, RemoveOp, RelationOp, opFromJSON } =
+  ParseOp;
 
 describe('ParseOp', () => {
   it('base class', () => {
@@ -398,7 +396,11 @@ describe('ParseOp', () => {
     expect(rel.targetClassName).toBe('Item');
     expect(r2.applyTo(rel, { className: 'Delivery', id: 'D3' })).toBe(rel);
 
-    const relLocal = r.applyTo(undefined, { className: 'Delivery', id: 'localD4' }, 'shipments');
+    const relLocal = r.applyTo(
+      undefined,
+      { className: 'Delivery', _localId: 'localD4' },
+      'shipments'
+    );
     expect(relLocal.parent._localId).toBe('localD4');
 
     expect(r.applyTo.bind(r, 'string')).toThrow(

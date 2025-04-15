@@ -292,6 +292,18 @@ describe('Parse Object', () => {
     assert.strictEqual(result.get('a').b.c.d, 2);
   });
 
+  it('can set nested fields without repeating pending operations on toJSON (regression test for #1452)', async () => {
+    const a = new Parse.Object('MyObject');
+    a.set('obj', {});
+    await a.save();
+    a.set('obj.a', 0);
+    const json = a.toJSON();
+    expect(json.obj).toEqual({ a: 0 });
+    expect(new Set(Object.keys(json))).toEqual(
+      new Set(['objectId', 'createdAt', 'updatedAt', 'obj'])
+    );
+  });
+
   it('can increment nested field and retain full object', async () => {
     const obj = new Parse.Object('TestIncrementObject');
     obj.set('objectField', { number: 5, letter: 'a' });
@@ -1108,7 +1120,7 @@ describe('Parse Object', () => {
       });
   });
 
-  it('can skip cascade saving as per request', async done => {
+  it('can skip cascade saving as per request', async () => {
     const Parent = Parse.Object.extend('Parent');
     const Child = Parse.Object.extend('Child');
 
@@ -1142,8 +1154,6 @@ describe('Parse Object', () => {
     await parent.save(null, { cascadeSave: false });
     const john = await new Parse.Query(Child).doesNotExist('lastname').first();
     expect(john.get('lastname')).toBeUndefined();
-
-    done();
   });
 
   it('can do two saves at the same time', done => {
@@ -1956,7 +1966,7 @@ describe('Parse Object', () => {
     }
   });
 
-  it('can clone with relation', async done => {
+  it('can clone with relation', async () => {
     const testObject = new TestObject();
     const o = new TestObject();
     await o.save();
@@ -1982,8 +1992,6 @@ describe('Parse Object', () => {
 
     relations = await o2.relation('aRelation').query().find();
     assert.equal(relations.length, 1);
-
-    done();
   });
 
   it('isDataAvailable', async () => {
@@ -2046,6 +2054,44 @@ describe('Parse Object', () => {
     expect(obj.get('object')).toBeInstanceOf(Object);
     expect(obj.get('string')).toBeDefined();
     expect(obj.get('string')).toBeInstanceOf(String);
+  });
+
+  it('returns correct field values', async () => {
+    const values = [
+      { field: 'string', value: 'string' },
+      { field: 'number', value: 1 },
+      { field: 'boolean', value: true },
+      { field: 'array', value: [0, 1, 2] },
+      { field: 'array', value: [1, 2, 3] },
+      { field: 'array', value: [{ '0': 'a' }, 2, 3] },
+      { field: 'object', value: { key: 'value' } },
+      { field: 'object', value: { key1: 'value1', key2: 'value2' } },
+      { field: 'object', value: { key1: 1, key2: 2 } },
+      { field: 'object', value: { '1x1': 1 } },
+      { field: 'object', value: { '1x1': 1, '2': 2 } },
+      { field: 'object', value: { '0': 0 } },
+      { field: 'object', value: { '1': 1 } },
+      { field: 'object', value: { '0': { '0': 'a', '1': 'b' } } },
+      { field: 'date', value: new Date() },
+      {
+        field: 'file',
+        value: Parse.File.fromJSON({
+          __type: 'File',
+          name: 'name',
+          url: 'http://localhost:1337/parse/files/integration/name',
+        }),
+      },
+      { field: 'geoPoint', value: new Parse.GeoPoint(40, -30) },
+      { field: 'bytes', value: { __type: 'Bytes', base64: 'ZnJveW8=' } },
+    ];
+    for (const value of values) {
+      const object = new TestObject();
+      object.set(value.field, value.value);
+      await object.save();
+      const query = new Parse.Query(TestObject);
+      const objectAgain = await query.get(object.id);
+      expect(objectAgain.get(value.field)).toEqual(value.value);
+    }
   });
 
   describe('allowCustomObjectId', () => {

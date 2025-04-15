@@ -3,6 +3,7 @@ jest.dontMock('../CoreManager');
 jest.dontMock('../decode');
 jest.dontMock('../encode');
 jest.dontMock('../ParseError');
+jest.dontMock('../ParseObject');
 
 const Hooks = require('../ParseHooks');
 const CoreManager = require('../CoreManager');
@@ -129,117 +130,73 @@ describe('Hooks', () => {
     ]);
   });
 
-  it('shoud throw invalid create', async done => {
-    const p1 = Hooks.create({ functionName: 'myFunction' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+  it('shoud throw invalid create', async () => {
+    expect.assertions(10);
+    const p1 = Hooks.create({ functionName: 'myFunction' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
 
-    const p2 = Hooks.create({ url: 'http://dummy.com' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+    const p2 = Hooks.create({ url: 'http://dummy.com' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
 
-    const p3 = Hooks.create({ className: 'MyClass' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+    const p3 = Hooks.create({ className: 'MyClass' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
 
-    const p4 = Hooks.create({ className: 'MyClass', url: 'http://dummy.com' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+    const p4 = Hooks.create({ className: 'MyClass', url: 'http://dummy.com' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
 
-    const p5 = Hooks.create({ className: 'MyClass', triggerName: 'beforeSave' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+    const p5 = Hooks.create({ className: 'MyClass', triggerName: 'beforeSave' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
 
     await Promise.all([p1, p2, p3, p4, p5]);
-    done();
   });
 
-  it('shoud throw invalid update', async done => {
-    const p1 = Hooks.update({ functionssName: 'myFunction' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+  it('shoud throw invalid update', async () => {
+    expect.assertions(6);
+    const p1 = Hooks.update({ functionssName: 'myFunction' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
 
-    const p2 = Hooks.update({ className: 'MyClass' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+    const p2 = Hooks.update({ className: 'MyClass' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
 
-    const p3 = Hooks.update({ className: 'MyClass', url: 'http://dummy.com' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+    const p3 = Hooks.update({ className: 'MyClass', url: 'http://dummy.com' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
     await Promise.all([p1, p2, p3]);
-    done();
   });
 
-  it('shoud throw invalid remove', async done => {
-    const p1 = Hooks.remove({ functionssName: 'myFunction' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+  it('shoud throw invalid remove', async () => {
+    expect.assertions(6);
+    const p1 = Hooks.remove({ functionssName: 'myFunction' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
 
-    const p2 = Hooks.remove({ className: 'MyClass' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+    const p2 = Hooks.remove({ className: 'MyClass' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
 
-    const p3 = Hooks.remove({ className: 'MyClass', url: 'http://dummy.com' })
-      .then(() => {
-        done.fail('should not succeed');
-      })
-      .catch(err => {
-        expect(err.code).toBe(143);
-        expect(err.error).toBe('invalid hook declaration');
-      });
+    const p3 = Hooks.remove({ className: 'MyClass', url: 'http://dummy.com' }).catch(err => {
+      expect(err.code).toBe(143);
+      expect(err.error).toBe('invalid hook declaration');
+    });
 
     await Promise.all([p1, p2, p3]);
-    done();
   });
 
   it('should sendRequest', async () => {

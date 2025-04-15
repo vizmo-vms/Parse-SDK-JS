@@ -9,18 +9,22 @@ jest.dontMock('../EventEmitter');
 jest.dontMock('../promiseUtils');
 
 // Forces the loading
-const LiveQuery = require('../ParseLiveQuery').default;
+const ParseLiveQuery = require('../ParseLiveQuery').default;
 const CoreManager = require('../CoreManager');
+const EventEmitter = require('../EventEmitter');
 const ParseQuery = require('../ParseQuery').default;
 const LiveQuerySubscription = require('../LiveQuerySubscription').default;
 const mockLiveQueryClient = {
   open: jest.fn(),
   close: jest.fn(),
 };
+CoreManager.setEventEmitter(EventEmitter);
+const LiveQuery = new ParseLiveQuery();
 
 describe('ParseLiveQuery', () => {
   beforeEach(() => {
     const controller = CoreManager.getLiveQueryController();
+    CoreManager.setLiveQuery(LiveQuery);
     controller._clearCachedDefaultClient();
     CoreManager.set('InstallationController', {
       currentInstallationId() {
@@ -227,7 +231,7 @@ describe('ParseLiveQuery', () => {
     });
   });
 
-  it('should not throw on usubscribe', done => {
+  it('should not throw on usubscribe', () => {
     CoreManager.set('UserController', {
       currentUserAsync() {
         return Promise.resolve({
@@ -240,7 +244,7 @@ describe('ParseLiveQuery', () => {
     const query = new ParseQuery('ObjectType');
     query.equalTo('test', 'value');
     const subscription = new LiveQuerySubscription('0', query, 'token');
-    subscription.unsubscribe().then(done).catch(done.fail);
+    subscription.unsubscribe();
   });
 
   it('can handle LiveQuery open event', async () => {

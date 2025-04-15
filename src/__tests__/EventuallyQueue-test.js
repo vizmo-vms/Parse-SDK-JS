@@ -51,16 +51,15 @@ const ParseObject = require('../ParseObject');
 const RESTController = require('../RESTController');
 const Storage = require('../Storage');
 const mockXHR = require('./test_helpers/mockXHR');
+const flushPromises = require('./test_helpers/flushPromises');
 
 CoreManager.setInstallationController({
   currentInstallationId() {
     return Promise.resolve('iid');
   },
+  currentInstallation() {},
+  updateInstallationOnDisk() {},
 });
-
-function flushPromises() {
-  return new Promise(resolve => setImmediate(resolve));
-}
 
 describe('EventuallyQueue', () => {
   beforeEach(async () => {

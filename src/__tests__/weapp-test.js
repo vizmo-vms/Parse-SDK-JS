@@ -10,6 +10,7 @@ jest.dontMock('../ParseObject');
 jest.dontMock('../RESTController');
 jest.dontMock('../Socket.weapp');
 jest.dontMock('../Storage');
+jest.dontMock('../StorageController.weapp');
 jest.dontMock('../uuid');
 jest.dontMock('crypto-js/aes');
 jest.dontMock('./test_helpers/mockWeChat');
@@ -19,7 +20,7 @@ const mockWeChat = require('./test_helpers/mockWeChat');
 
 global.wx = mockWeChat;
 
-jest.mock('uuid/v4', () => {
+jest.mock('uuid', () => {
   return () => 0;
 });
 
@@ -33,7 +34,8 @@ describe('WeChat', () => {
   });
 
   it('load StorageController', () => {
-    const StorageController = require('../StorageController.weapp');
+    const StorageController = require('../StorageController');
+    CoreManager.setStorageController(StorageController);
     jest.spyOn(StorageController, 'setItem');
     const storage = require('../Storage');
     storage.setItem('key', 'value');
@@ -54,7 +56,9 @@ describe('WeChat', () => {
   });
 
   it('load WebSocketController', () => {
-    const socket = require('../Socket.weapp');
+    const socket = require('../WebSocketController');
+    CoreManager.setWebSocketController(socket);
+
     require('../LiveQueryClient');
     const websocket = CoreManager.getWebSocketController();
     expect(websocket).toEqual(socket);

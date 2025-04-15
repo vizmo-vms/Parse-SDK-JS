@@ -1,9 +1,12 @@
 jest.dontMock('../CoreManager');
 jest.dontMock('../encode');
 jest.dontMock('../decode');
+jest.dontMock('../EventEmitter');
 jest.dontMock('../ParseError');
 jest.dontMock('../ParseGeoPoint');
 jest.dontMock('../ParseQuery');
+jest.dontMock('../ParseObject');
+jest.dontMock('../ParseOp');
 jest.dontMock('../promiseUtils');
 jest.dontMock('../SingleInstanceStateController');
 jest.dontMock('../UniqueInstanceStateController');
@@ -16,22 +19,6 @@ jest.mock('../uuid', () => {
   let value = 0;
   return () => value++;
 });
-const mockObject = function (className) {
-  this.className = className;
-  this.attributes = {};
-};
-mockObject.registerSubclass = function () {};
-mockObject.fromJSON = function (json) {
-  const o = new mockObject(json.className);
-  o.id = json.objectId;
-  for (const attr in json) {
-    if (attr !== 'className' && attr !== '__type' && attr !== 'objectId') {
-      o.attributes[attr] = json[attr];
-    }
-  }
-  return o;
-};
-jest.setMock('../ParseObject', mockObject);
 
 const mockLocalDatastore = {
   _serializeObjectsFromPinName: jest.fn(),
@@ -40,9 +27,10 @@ const mockLocalDatastore = {
 jest.setMock('../LocalDatastore', mockLocalDatastore);
 
 let CoreManager = require('../CoreManager');
+const EventEmitter = require('../EventEmitter');
 const ParseError = require('../ParseError').default;
 const ParseGeoPoint = require('../ParseGeoPoint').default;
-let ParseObject = require('../ParseObject');
+let ParseObject = require('../ParseObject').default;
 let ParseQuery = require('../ParseQuery').default;
 const LiveQuerySubscription = require('../LiveQuerySubscription').default;
 
@@ -52,6 +40,7 @@ const MockRESTController = {
 };
 
 const QueryController = CoreManager.getQueryController();
+CoreManager.setEventEmitter(EventEmitter);
 
 import { DEFAULT_PIN } from '../LocalDatastoreUtils';
 
@@ -1078,6 +1067,32 @@ describe('ParseQuery', () => {
     expect(q2._exclude).toEqual(['foo', 'bar']);
   });
 
+  it('can watch keys', () => {
+    const q = new ParseQuery('Item');
+    q.watch('foo');
+    const json = q.toJSON();
+    expect(json).toEqual({
+      where: {},
+      watch: 'foo',
+    });
+    const q2 = new ParseQuery('Item');
+    q2.withJSON(json);
+    expect(q2._watch).toEqual(['foo']);
+  });
+
+  it('can watch multiple keys', () => {
+    const q = new ParseQuery('Item');
+    q.watch(['foo', 'bar']);
+    const json = q.toJSON();
+    expect(json).toEqual({
+      where: {},
+      watch: 'foo,bar',
+    });
+    const q2 = new ParseQuery('Item');
+    q2.withJSON(json);
+    expect(q2._watch).toEqual(['foo', 'bar']);
+  });
+
   it('can use extraOptions', () => {
     const q = new ParseQuery('Item');
     q._extraOptions.randomOption = 'test';
@@ -1752,7 +1767,6 @@ describe('ParseQuery', () => {
       const q = new ParseQuery('Item');
       await q.eachBatch(items => {
         items.map(item => results.push(item.attributes.size));
-        return new Promise(resolve => setImmediate(resolve));
       });
       expect(results).toEqual(['medium', 'small']);
     });
@@ -1789,6 +1803,7 @@ describe('ParseQuery', () => {
       q.select('size', 'name');
       q.includeAll();
       q.hint('_id_');
+      q.exclude('foo');
 
       await q.findAll();
       expect(findMock).toHaveBeenCalledTimes(1);
@@ -1799,6 +1814,7 @@ describe('ParseQuery', () => {
         order: 'objectId',
         keys: 'size,name',
         include: '*',
+        excludeKeys: 'foo',
         hint: '_id_',
         where: {
           size: {
@@ -2126,7 +2142,7 @@ describe('ParseQuery', () => {
       let callCount = 0;
       const callback = (accumulator, object) => {
         callCount += 1;
-        accumulator.attributes.number += object.attributes.number;
+        accumulator.set('number', accumulator.attributes.number + object.attributes.number);
         return accumulator;
       };
       const q = new ParseQuery('Item');
@@ -2335,8 +2351,7 @@ describe('ParseQuery', () => {
 
     const q = new ParseQuery('Thing');
     let testObject;
-    return q
-      .find()
+    q.find()
       .then(results => {
         testObject = results[0];
 
@@ -2461,8 +2476,7 @@ describe('ParseQuery', () => {
 
     const q = new ParseQuery('Thing');
     let testObject;
-    return q
-      .first()
+    q.first()
       .then(result => {
         testObject = result;
 
@@ -2876,8 +2890,7 @@ describe('ParseQuery', () => {
     const q = new ParseQuery('Thing');
     q.select('other', 'tbd', 'subObject.key1');
     let testObject;
-    return q
-      .find()
+    q.find()
       .then(results => {
         testObject = results[0];
 
@@ -2927,8 +2940,7 @@ describe('ParseQuery', () => {
 
     const q = new ParseQuery('Thing');
     let testObject;
-    return q
-      .find()
+    q.find()
       .then(results => {
         testObject = results[0];
 
@@ -3797,5 +3809,52 @@ describe('ParseQuery LocalDatastore', () => {
     expect(subscription.id).toBe('0');
     expect(subscription.sessionToken).toBe('r:test');
     expect(subscription.query).toEqual(query);
+  });
+
+  it('can add comment to query', () => {
+    const query = new ParseQuery('TestObject');
+    const comment = 'Hello Parse';
+    query.comment(comment);
+    expect(query.toJSON()).toEqual({
+      where: {},
+      comment: comment,
+    });
+  });
+
+  it('can add comment to query from json', () => {
+    const query = new ParseQuery('Item');
+    const comment = 'Hello Parse';
+    query.comment(comment);
+    const json = query.toJSON();
+    expect(json).toEqual({
+      where: {},
+      comment: comment,
+    });
+    const query2 = new ParseQuery('Item');
+    query2.withJSON(json);
+    expect(query2._comment).toEqual(comment);
+  });
+
+  it('comment can only be string', () => {
+    const obj1 = {
+      className: 'Item',
+      objectId: 'objectId1',
+      password: 123,
+      number: 3,
+      string: 'a',
+    };
+    const query = new ParseQuery('TestObject');
+    expect(query.comment.bind(query, obj1)).toThrow(
+      'The value of a comment to be sent with this query must be a string.'
+    );
+  });
+
+  it('clear comment when no value passed', () => {
+    const query = new ParseQuery('Item');
+    const comment = 'Hello Parse';
+    query.comment(comment);
+    expect(query._comment).toBe(comment);
+    query.comment();
+    expect(query._comment).toBeUndefined();
   });
 });

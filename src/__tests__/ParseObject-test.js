@@ -29,6 +29,7 @@ jest.mock('../uuid', () => {
   return () => value++;
 });
 jest.dontMock('./test_helpers/mockXHR');
+jest.dontMock('./test_helpers/flushPromises');
 
 jest.useFakeTimers();
 
@@ -115,12 +116,24 @@ const mockLocalDatastore = {
   _serializeObjectsFromPinName: jest.fn(),
   _serializeObject: jest.fn(),
   _transverseSerializeObject: jest.fn(),
-  _updateObjectIfPinned: jest.fn(),
   _destroyObjectIfPinned: jest.fn(),
-  _updateLocalIdForObject: jest.fn(),
+  _updateLocalIdForObject: jest.fn((localId, /** @type {ParseObject}*/ object) => {
+    if (!mockLocalDatastore.isEnabled) {
+      return;
+    }
+    /* eslint-disable @typescript-eslint/no-unused-vars */
+    // (Taken from LocalDataStore source) This fails for nested objects that are not ParseObject
+    const objectKey = mockLocalDatastore.getKeyForObject(object);
+  }),
+  _updateObjectIfPinned: jest.fn(),
+  getKeyForObject: jest.fn(object => {
+    // (Taken from LocalDataStore source) This fails for nested objects that are not ParseObject
+    const objectId = object.objectId || object._getId();
+    const OBJECT_PREFIX = 'Parse_LDS_';
+    return `${OBJECT_PREFIX}${object.className}_${objectId}`;
+  }),
   updateFromServer: jest.fn(),
   _clear: jest.fn(),
-  getKeyForObject: jest.fn(),
   checkIfEnabled: jest.fn(() => {
     if (!mockLocalDatastore.isEnabled) {
       console.error('Parse.enableLocalDatastore() must be called first');
@@ -144,24 +157,28 @@ const SingleInstanceStateController = require('../SingleInstanceStateController'
 const unsavedChildren = require('../unsavedChildren').default;
 
 const mockXHR = require('./test_helpers/mockXHR');
+const flushPromises = require('./test_helpers/flushPromises');
 
 CoreManager.setLocalDatastore(mockLocalDatastore);
 CoreManager.setRESTController(RESTController);
+CoreManager.setEventuallyQueue(EventuallyQueue);
 CoreManager.setInstallationController({
   currentInstallationId() {
     return Promise.resolve('iid');
   },
+  currentInstallation() {},
+  updateInstallationOnDisk() {},
 });
 CoreManager.set('APPLICATION_ID', 'A');
 CoreManager.set('JAVASCRIPT_KEY', 'B');
 CoreManager.set('MASTER_KEY', 'C');
 CoreManager.set('VERSION', 'V');
+// Register our mocks
+jest.spyOn(CoreManager, 'getParseQuery').mockImplementation(() => mockQuery);
+jest.spyOn(CoreManager, 'getEventuallyQueue').mockImplementation(() => EventuallyQueue);
+jest.spyOn(CoreManager, 'getParseUser').mockImplementation(() => require('../ParseUser').default);
 
 const { SetOp, UnsetOp, IncrementOp } = require('../ParseOp');
-
-function flushPromises() {
-  return new Promise(resolve => setImmediate(resolve));
-}
 
 describe('ParseObject', () => {
   beforeEach(() => {
@@ -352,6 +369,13 @@ describe('ParseObject', () => {
       objectId: 'O1',
       ACL: { user1: { read: true } },
     });
+    expect(o.getACL()).toEqual(ACL);
+  });
+
+  it('encodes ACL from json', () => {
+    const ACL = new ParseACL({ user1: { read: true } });
+    const o = new ParseObject('Item');
+    o.set({ ACL: ACL.toJSON() });
     expect(o.getACL()).toEqual(ACL);
   });
 
@@ -649,6 +673,77 @@ describe('ParseObject', () => {
     expect(o._getSaveJSON()).toEqual({
       'objectField.number': 20,
       otherField: { hello: 'world' },
+    });
+    expect(o.toJSON()).toEqual({
+      objectField: {
+        number: 20,
+        letter: 'a',
+      },
+      otherField: { hello: 'world' },
+      objectId: 'setNested',
+    });
+  });
+
+  it('can set multiple nested fields (regression test for #1450)', () => {
+    const o = new ParseObject('Person');
+    o._finishFetch({
+      objectId: 'setNested2_1450',
+      objectField: {
+        number: 5,
+        letter: 'a',
+        nested: {
+          number: 0,
+          letter: 'b',
+        },
+      },
+    });
+
+    expect(o.attributes).toEqual({
+      objectField: { number: 5, letter: 'a', nested: { number: 0, letter: 'b' } },
+    });
+    o.set('objectField.number', 20);
+    o.set('objectField.letter', 'b');
+    o.set('objectField.nested.number', 1);
+    o.set('objectField.nested.letter', 'c');
+
+    expect(o.attributes).toEqual({
+      objectField: { number: 20, letter: 'b', nested: { number: 1, letter: 'c' } },
+    });
+    expect(o.op('objectField.number') instanceof SetOp).toBe(true);
+    expect(o.dirtyKeys()).toEqual([
+      'objectField.number',
+      'objectField.letter',
+      'objectField.nested.number',
+      'objectField.nested.letter',
+      'objectField',
+    ]);
+    expect(o._getSaveJSON()).toEqual({
+      'objectField.number': 20,
+      'objectField.letter': 'b',
+      'objectField.nested.number': 1,
+      'objectField.nested.letter': 'c',
+    });
+
+    o.revert('objectField.nested.number');
+    o.revert('objectField.nested.letter');
+    expect(o._getSaveJSON()).toEqual({
+      'objectField.number': 20,
+      'objectField.letter': 'b',
+    });
+    expect(o.attributes).toEqual({
+      objectField: { number: 20, letter: 'b', nested: { number: 0, letter: 'b' } },
+    });
+
+    // Also test setting new root fields using the dot notation
+    o.set('objectField2.number', 0);
+    expect(o._getSaveJSON()).toEqual({
+      'objectField.number': 20,
+      'objectField.letter': 'b',
+      'objectField2.number': 0,
+    });
+    expect(o.attributes).toEqual({
+      objectField: { number: 20, letter: 'b', nested: { number: 0, letter: 'b' } },
+      objectField2: { number: 0 },
     });
   });
 
@@ -2293,13 +2388,14 @@ describe('ParseObject', () => {
     });
     const p = new ParseObject('Person');
     p.id = 'pid';
-    const result = p.destroy().then(() => {
+    const result = p.destroy({ sessionToken: 't_1234' }).then(() => {
       expect(xhr.open.mock.calls[0]).toEqual([
         'POST',
         'https://api.parse.com/1/classes/Person/pid',
         true,
       ]);
       expect(JSON.parse(xhr.send.mock.calls[0])._method).toBe('DELETE');
+      expect(JSON.parse(xhr.send.mock.calls[0])._SessionToken).toBe('t_1234');
     });
     jest.runAllTicks();
     await flushPromises();
@@ -2345,7 +2441,7 @@ describe('ParseObject', () => {
     expect(controller.ajax).toHaveBeenCalledTimes(0);
   });
 
-  it('can save an array of objects', async done => {
+  it('can save an array of objects', done => {
     const xhr = {
       setRequestHeader: jest.fn(),
       open: jest.fn(),
@@ -2368,21 +2464,22 @@ describe('ParseObject', () => {
       done();
     });
     jest.runAllTicks();
-    await flushPromises();
-    xhr.status = 200;
-    xhr.responseText = JSON.stringify([
-      { success: { objectId: 'pid0' } },
-      { success: { objectId: 'pid1' } },
-      { success: { objectId: 'pid2' } },
-      { success: { objectId: 'pid3' } },
-      { success: { objectId: 'pid4' } },
-    ]);
-    xhr.readyState = 4;
-    xhr.onreadystatechange();
-    jest.runAllTicks();
+    flushPromises().then(() => {
+      xhr.status = 200;
+      xhr.responseText = JSON.stringify([
+        { success: { objectId: 'pid0' } },
+        { success: { objectId: 'pid1' } },
+        { success: { objectId: 'pid2' } },
+        { success: { objectId: 'pid3' } },
+        { success: { objectId: 'pid4' } },
+      ]);
+      xhr.readyState = 4;
+      xhr.onreadystatechange();
+      jest.runAllTicks();
+    });
   });
 
-  it('can saveAll with batchSize', async done => {
+  it('can saveAll with batchSize', done => {
     const xhrs = [];
     for (let i = 0; i < 2; i++) {
       xhrs[i] = {
@@ -2407,43 +2504,43 @@ describe('ParseObject', () => {
       done();
     });
     jest.runAllTicks();
-    await flushPromises();
+    flushPromises().then(async () => {
+      xhrs[0].responseText = JSON.stringify([
+        { success: { objectId: 'pid0' } },
+        { success: { objectId: 'pid1' } },
+        { success: { objectId: 'pid2' } },
+        { success: { objectId: 'pid3' } },
+        { success: { objectId: 'pid4' } },
+        { success: { objectId: 'pid5' } },
+        { success: { objectId: 'pid6' } },
+        { success: { objectId: 'pid7' } },
+        { success: { objectId: 'pid8' } },
+        { success: { objectId: 'pid9' } },
+        { success: { objectId: 'pid10' } },
+        { success: { objectId: 'pid11' } },
+        { success: { objectId: 'pid12' } },
+        { success: { objectId: 'pid13' } },
+        { success: { objectId: 'pid14' } },
+        { success: { objectId: 'pid15' } },
+        { success: { objectId: 'pid16' } },
+        { success: { objectId: 'pid17' } },
+        { success: { objectId: 'pid18' } },
+        { success: { objectId: 'pid19' } },
+      ]);
+      xhrs[0].onreadystatechange();
+      jest.runAllTicks();
+      await flushPromises();
 
-    xhrs[0].responseText = JSON.stringify([
-      { success: { objectId: 'pid0' } },
-      { success: { objectId: 'pid1' } },
-      { success: { objectId: 'pid2' } },
-      { success: { objectId: 'pid3' } },
-      { success: { objectId: 'pid4' } },
-      { success: { objectId: 'pid5' } },
-      { success: { objectId: 'pid6' } },
-      { success: { objectId: 'pid7' } },
-      { success: { objectId: 'pid8' } },
-      { success: { objectId: 'pid9' } },
-      { success: { objectId: 'pid10' } },
-      { success: { objectId: 'pid11' } },
-      { success: { objectId: 'pid12' } },
-      { success: { objectId: 'pid13' } },
-      { success: { objectId: 'pid14' } },
-      { success: { objectId: 'pid15' } },
-      { success: { objectId: 'pid16' } },
-      { success: { objectId: 'pid17' } },
-      { success: { objectId: 'pid18' } },
-      { success: { objectId: 'pid19' } },
-    ]);
-    xhrs[0].onreadystatechange();
-    jest.runAllTicks();
-    await flushPromises();
-
-    xhrs[1].responseText = JSON.stringify([
-      { success: { objectId: 'pid20' } },
-      { success: { objectId: 'pid21' } },
-    ]);
-    xhrs[1].onreadystatechange();
-    jest.runAllTicks();
+      xhrs[1].responseText = JSON.stringify([
+        { success: { objectId: 'pid20' } },
+        { success: { objectId: 'pid21' } },
+      ]);
+      xhrs[1].onreadystatechange();
+      jest.runAllTicks();
+    });
   });
 
-  it('can saveAll with global batchSize', async done => {
+  it('can saveAll with global batchSize', done => {
     const xhrs = [];
     for (let i = 0; i < 2; i++) {
       xhrs[i] = {
@@ -2468,43 +2565,43 @@ describe('ParseObject', () => {
       done();
     });
     jest.runAllTicks();
-    await flushPromises();
+    flushPromises().then(async () => {
+      xhrs[0].responseText = JSON.stringify([
+        { success: { objectId: 'pid0' } },
+        { success: { objectId: 'pid1' } },
+        { success: { objectId: 'pid2' } },
+        { success: { objectId: 'pid3' } },
+        { success: { objectId: 'pid4' } },
+        { success: { objectId: 'pid5' } },
+        { success: { objectId: 'pid6' } },
+        { success: { objectId: 'pid7' } },
+        { success: { objectId: 'pid8' } },
+        { success: { objectId: 'pid9' } },
+        { success: { objectId: 'pid10' } },
+        { success: { objectId: 'pid11' } },
+        { success: { objectId: 'pid12' } },
+        { success: { objectId: 'pid13' } },
+        { success: { objectId: 'pid14' } },
+        { success: { objectId: 'pid15' } },
+        { success: { objectId: 'pid16' } },
+        { success: { objectId: 'pid17' } },
+        { success: { objectId: 'pid18' } },
+        { success: { objectId: 'pid19' } },
+      ]);
+      xhrs[0].onreadystatechange();
+      jest.runAllTicks();
+      await flushPromises();
 
-    xhrs[0].responseText = JSON.stringify([
-      { success: { objectId: 'pid0' } },
-      { success: { objectId: 'pid1' } },
-      { success: { objectId: 'pid2' } },
-      { success: { objectId: 'pid3' } },
-      { success: { objectId: 'pid4' } },
-      { success: { objectId: 'pid5' } },
-      { success: { objectId: 'pid6' } },
-      { success: { objectId: 'pid7' } },
-      { success: { objectId: 'pid8' } },
-      { success: { objectId: 'pid9' } },
-      { success: { objectId: 'pid10' } },
-      { success: { objectId: 'pid11' } },
-      { success: { objectId: 'pid12' } },
-      { success: { objectId: 'pid13' } },
-      { success: { objectId: 'pid14' } },
-      { success: { objectId: 'pid15' } },
-      { success: { objectId: 'pid16' } },
-      { success: { objectId: 'pid17' } },
-      { success: { objectId: 'pid18' } },
-      { success: { objectId: 'pid19' } },
-    ]);
-    xhrs[0].onreadystatechange();
-    jest.runAllTicks();
-    await flushPromises();
-
-    xhrs[1].responseText = JSON.stringify([
-      { success: { objectId: 'pid20' } },
-      { success: { objectId: 'pid21' } },
-    ]);
-    xhrs[1].onreadystatechange();
-    jest.runAllTicks();
+      xhrs[1].responseText = JSON.stringify([
+        { success: { objectId: 'pid20' } },
+        { success: { objectId: 'pid21' } },
+      ]);
+      xhrs[1].onreadystatechange();
+      jest.runAllTicks();
+    });
   });
 
-  it('returns the first error when saving an array of objects', async done => {
+  it('returns the first error when saving an array of objects', done => {
     const xhrs = [];
     for (let i = 0; i < 2; i++) {
       xhrs[i] = {
@@ -2531,41 +2628,32 @@ describe('ParseObject', () => {
       expect(error.errors.length).toBe(3);
       done();
     });
-    await flushPromises();
-
-    xhrs[0].responseText = JSON.stringify([
-      { success: { objectId: 'pid0' } },
-      { success: { objectId: 'pid1' } },
-      { success: { objectId: 'pid2' } },
-      { success: { objectId: 'pid3' } },
-      { success: { objectId: 'pid4' } },
-      { success: { objectId: 'pid5' } },
-      { error: { code: -1, error: 'first error' } },
-      { success: { objectId: 'pid7' } },
-      { success: { objectId: 'pid8' } },
-      { success: { objectId: 'pid9' } },
-      { success: { objectId: 'pid10' } },
-      { success: { objectId: 'pid11' } },
-      { success: { objectId: 'pid12' } },
-      { success: { objectId: 'pid13' } },
-      { success: { objectId: 'pid14' } },
-      { error: { code: -1, error: 'second error' } },
-      { success: { objectId: 'pid16' } },
-      { success: { objectId: 'pid17' } },
-      { success: { objectId: 'pid18' } },
-      { success: { objectId: 'pid19' } },
-    ]);
-    xhrs[0].onreadystatechange();
-
-    await flushPromises();
-
-    xhrs[1].responseText = JSON.stringify([
-      { success: { objectId: 'pid20' } },
-      { error: { code: -1, error: 'third error' } },
-    ]);
-    xhrs[1].onreadystatechange();
-
-    jest.runAllTicks();
+    flushPromises().then(() => {
+      xhrs[0].responseText = JSON.stringify([
+        { success: { objectId: 'pid0' } },
+        { success: { objectId: 'pid1' } },
+        { success: { objectId: 'pid2' } },
+        { success: { objectId: 'pid3' } },
+        { success: { objectId: 'pid4' } },
+        { success: { objectId: 'pid5' } },
+        { error: { code: -1, error: 'first error' } },
+        { success: { objectId: 'pid7' } },
+        { success: { objectId: 'pid8' } },
+        { success: { objectId: 'pid9' } },
+        { success: { objectId: 'pid10' } },
+        { success: { objectId: 'pid11' } },
+        { success: { objectId: 'pid12' } },
+        { success: { objectId: 'pid13' } },
+        { success: { objectId: 'pid14' } },
+        { error: { code: -1, error: 'second error' } },
+        { success: { objectId: 'pid16' } },
+        { success: { objectId: 'pid17' } },
+        { success: { objectId: 'pid18' } },
+        { success: { objectId: 'pid19' } },
+      ]);
+      xhrs[0].onreadystatechange();
+      jest.runAllTicks();
+    });
   });
 });
 
@@ -2574,7 +2662,7 @@ describe('ObjectController', () => {
     jest.clearAllMocks();
   });
 
-  it('can fetch a single object', async done => {
+  it('can fetch a single object', done => {
     const objectController = CoreManager.getObjectController();
     const xhr = {
       setRequestHeader: jest.fn(),
@@ -2596,13 +2684,13 @@ describe('ObjectController', () => {
       expect(body._method).toBe('GET');
       done();
     });
-    await flushPromises();
-
-    xhr.status = 200;
-    xhr.responseText = JSON.stringify({});
-    xhr.readyState = 4;
-    xhr.onreadystatechange();
-    jest.runAllTicks();
+    flushPromises().then(() => {
+      xhr.status = 200;
+      xhr.responseText = JSON.stringify({});
+      xhr.readyState = 4;
+      xhr.onreadystatechange();
+      jest.runAllTicks();
+    });
   });
 
   it('accepts context on fetch', async () => {
@@ -2644,7 +2732,8 @@ describe('ObjectController', () => {
     });
   });
 
-  it('can fetch a single object with include', async done => {
+  it('can fetch a single object with include', async () => {
+    expect.assertions(2);
     const objectController = CoreManager.getObjectController();
     const xhr = {
       setRequestHeader: jest.fn(),
@@ -2664,7 +2753,6 @@ describe('ObjectController', () => {
       ]);
       const body = JSON.parse(xhr.send.mock.calls[0]);
       expect(body._method).toBe('GET');
-      done();
     });
     await flushPromises();
 
