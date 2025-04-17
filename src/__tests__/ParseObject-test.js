@@ -2849,7 +2849,7 @@ describe('ParseObject', () => {
     });
   });
 
-  it('returns the first error when saving an array of objects', done => {
+  it('returns the first error along with list of errors when saving an array of objects', done => {
     const xhrs = [];
     for (let i = 0; i < 2; i++) {
       xhrs[i] = {
@@ -2869,11 +2869,11 @@ describe('ParseObject', () => {
       objects[i] = new ParseObject('Person');
     }
     ParseObject.saveAll(objects).then(null, error => {
-      // The second batch never ran
-      expect(xhrs[1].open.mock.calls.length).toBe(0);
       expect(objects[19].dirty()).toBe(false);
-      expect(objects[20].dirty()).toBe(true);
+      expect(objects[20].dirty()).toBe(false);
+
       expect(error.message).toBe('first error');
+      expect(error.errors.length).toBe(3);
       done();
     });
     flushPromises().then(() => {
