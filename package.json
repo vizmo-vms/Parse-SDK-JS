@@ -1,5 +1,5 @@
 {
-  "name": "parse",
+  "name": "@vizmo/parse",
   "version": "7.1.2",
   "description": "Parse JavaScript SDK",
   "homepage": "https://parseplatform.org",
