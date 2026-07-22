@@ -23,7 +23,9 @@
 - [x] Type checks pass (one upstream unused-disable warning).
 - [x] Docs and circular-dependency checks pass.
 - [x] Node, React Native, browser, WeChat, and declaration builds pass.
-- [x] Mongo integration blocker recorded: 801 specs, 24 environment/upstream failures (6 missing-Chrome failures, time-order flakiness, and Mongo geospatial internal errors).
+- [x] Mongo integration result recorded: 801 specs, 5 upstream timestamp-resolution flakes; Chrome and Mongo geospatial failures resolved.
+- [x] Pin integration runner to MongoDB 8.0.x.
+- [x] Upgrade `ws` to `8.21.1`; production audit reports zero vulnerabilities.
 - [x] `npm pack --dry-run` and entry-point smoke imports pass.
 - [x] Final diff contains no alpha-only or unrelated changes.
 - [x] Review and approve plan before implementation.

@@ -64,26 +64,26 @@ Upgrade branch `7-vizmo` from upstream Parse SDK `7.1.2` to latest stable upstre
 - Lint, `ci:typecheck`, docs, circular dependency check, and all builds passed.
 - Type-test lint passed with one upstream unused `eslint-disable` warning.
 - `npm pack --dry-run` produced `@vizmo/parse@8.6.0-1`; root, node, React Native, and WeChat entry-point smoke imports passed.
-- Mongo integration ran 801 specs with 24 failures: 6 require missing Puppeteer Chrome 146, 5 are time-order/time-equality flakes, and 13 are Mongo geospatial internal-error timeouts. No failure touches fork `saveAll` behavior.
-- `npm ci` reports 80 transitive audit findings (10 low, 32 moderate, 33 high, 5 critical), inherited from upstream dependency graph; no automatic audit mutation applied.
+- Mongo integration ran 801 specs with 5 time-order/time-equality failures caused by consecutive writes sharing millisecond timestamps. Missing-Chrome and Mongo geospatial failures were resolved by installing Puppeteer Chrome 146 and pinning `mongodb-runner` to MongoDB 8.0.x. No failure touches fork `saveAll` behavior.
+- `npm audit --omit=dev --audit-level=moderate` reports zero production vulnerabilities after upgrading direct dependency `ws` to `8.21.1`.
 
 ## Detailed Tasks
 
 ### Task 1: Preserve Current Work and Create Upgrade Branch
 
-**Description:** Protect the already staged `7.1.2-1` metadata change, then create a dedicated `codex/upgrade-parse-8.6.0` branch from current `7-vizmo` HEAD. A temporary commit is preferable because the staged files are the same files expected to conflict during the merge; the final metadata task can amend or supersede it.
+**Description:** Protect the already staged `7.1.2-1` metadata change, then create dedicated `8-vizmo` branch from current `7-vizmo` HEAD. A temporary commit is preferable because the staged files are the same files expected to conflict during the merge; the final metadata task can amend or supersede it.
 
 **Acceptance criteria:**
 
-- [ ] Existing staged changes remain recoverable and unchanged before merge work starts.
-- [ ] Upgrade work occurs on `codex/upgrade-parse-8.6.0`, not directly on `7-vizmo`.
-- [ ] Baseline records `HEAD=ed0f1d1`, upstream target `284a268`, and merge base `06087ce`.
+- [x] Existing staged changes remain recoverable and unchanged before merge work starts.
+- [x] Upgrade work occurs on `8-vizmo`, not directly on `7-vizmo`.
+- [x] Baseline records `HEAD=ed0f1d1`, upstream target `284a268`, and merge base `06087ce`.
 
 **Verification:**
 
-- [ ] `rtk git status --short --branch`
-- [ ] `rtk git diff --cached --check`
-- [ ] `rtk git log --oneline --decorate -5`
+- [x] `rtk git status --short --branch`
+- [x] `rtk git diff --cached --check`
+- [x] `rtk git log --oneline --decorate -5`
 
 **Dependencies:** None
 
@@ -100,16 +100,16 @@ Upgrade branch `7-vizmo` from upstream Parse SDK `7.1.2` to latest stable upstre
 
 **Acceptance criteria:**
 
-- [ ] Merge includes upstream tag `8.6.0` and excludes commits unique to `upstream/alpha`.
-- [ ] `package.json`, root lockfile metadata, dependencies, `exports`, `typesVersions`, and Node engines are internally consistent.
-- [ ] Node support becomes `>=20.19.0 <21 || >=22.13.0 <23 || >=24.1.0 <25`; Node 18/19 support is intentionally removed.
+- [x] Merge includes upstream tag `8.6.0` and excludes commits unique to `upstream/alpha`.
+- [x] `package.json`, root lockfile metadata, dependencies, `exports`, `typesVersions`, and Node engines are internally consistent.
+- [x] Node support becomes `>=20.19.0 <21 || >=22.13.0 <23 || >=24.1.0 <25`; Node 18/19 support is intentionally removed.
 
 **Verification:**
 
-- [ ] `rtk git diff --check`
-- [ ] `rtk npm install --package-lock-only --ignore-scripts`
-- [ ] `rtk npm ci --ignore-scripts`
-- [ ] Inspect `npm pkg get name version engines exports typesVersions`
+- [x] `rtk git diff --check`
+- [x] `rtk npm install --package-lock-only --ignore-scripts`
+- [x] `rtk npm ci --ignore-scripts`
+- [x] Inspect `npm pkg get name version engines exports typesVersions`
 
 **Dependencies:** Task 1
 
@@ -127,14 +127,14 @@ Upgrade branch `7-vizmo` from upstream Parse SDK `7.1.2` to latest stable upstre
 
 **Acceptance criteria:**
 
-- [ ] One failed object does not clear `pending` or prevent later batches.
-- [ ] Every failed response produces `{ object, index, error: ParseError }`; define `index` as index within returned batch to retain current public fork behavior.
-- [ ] Final rejection has first failure's `code` and `message`, plus complete `errors`; local datastore updates still run only on all-success path, matching current fork behavior.
+- [x] One failed object does not clear `pending` or prevent later batches.
+- [x] Every failed response produces `{ object, index, error: ParseError }`; `index` remains index within returned batch to retain current public fork behavior.
+- [x] Final rejection has first failure's `code` and `message`, plus complete `errors`; local datastore updates still run only on all-success path, matching current fork behavior.
 
 **Verification:**
 
-- [ ] Focused test: `rtk npm test -- src/__tests__/ParseObject-test.js --runInBand`
-- [ ] Review diff around `DefaultController.save` against `upstream/release`.
+- [x] Focused test: `rtk npm test -- src/__tests__/ParseObject-test.js --runInBand`
+- [x] Review diff around `DefaultController.save` against `upstream/release`.
 
 **Dependencies:** Task 2
 
@@ -150,14 +150,14 @@ Upgrade branch `7-vizmo` from upstream Parse SDK `7.1.2` to latest stable upstre
 
 **Acceptance criteria:**
 
-- [ ] Duplicate `can saveAll with global batchSize` test introduced by fork is removed.
-- [ ] Regression asserts three errors across two batches and verifies `errors[].object`, `errors[].index`, and `errors[].error`.
-- [ ] Test fails on plain upstream 8.6.0 behavior and passes with fork patch.
+- [x] Duplicate `can saveAll with global batchSize` test introduced by fork is removed.
+- [x] Regression asserts three errors across two batches and verifies `errors[].object`, `errors[].index`, and `errors[].error`.
+- [x] Test fails on plain upstream 8.6.0 behavior and passes with fork patch.
 
 **Verification:**
 
-- [ ] `rtk npm test -- src/__tests__/ParseObject-test.js --runInBand`
-- [ ] `rtk npm run lint -- --no-cache`
+- [x] `rtk npm test -- src/__tests__/ParseObject-test.js --runInBand`
+- [x] `rtk npm run lint -- --no-cache`
 
 **Dependencies:** Task 3
 
@@ -173,22 +173,22 @@ Upgrade branch `7-vizmo` from upstream Parse SDK `7.1.2` to latest stable upstre
 
 **Acceptance criteria:**
 
-- [ ] Dependency install is reproducible from lockfile.
-- [ ] Unit tests, lint, type checks, docs, circular-dependency check, and builds pass.
-- [ ] Browser, WeChat, Node, React Native, and declarations build successfully.
+- [x] Dependency install is reproducible from lockfile.
+- [x] Unit tests, lint, type checks, docs, circular-dependency check, and builds pass.
+- [x] Browser, WeChat, Node, React Native, and declarations build successfully.
 
 **Verification:**
 
-- [ ] `rtk npm ci --ignore-scripts`
-- [ ] `rtk npm test -- --runInBand`
-- [ ] `rtk npm run lint -- --no-cache`
-- [ ] `rtk npm run ci:typecheck`
-- [ ] `rtk npm run test:types`
-- [ ] `rtk npm run docs`
-- [ ] `rtk npm run madge:circular`
-- [ ] `rtk npm run build`
-- [ ] `rtk npm run build:browser`
-- [ ] `rtk npm run build:weapp`
+- [x] `rtk npm ci --ignore-scripts`
+- [x] `rtk npm test -- --runInBand`
+- [x] `rtk npm run lint -- --no-cache`
+- [x] `rtk npm run ci:typecheck`
+- [x] `rtk npm run test:types`
+- [x] `rtk npm run docs`
+- [x] `rtk npm run madge:circular`
+- [x] `rtk npm run build`
+- [x] `rtk npm run build:browser`
+- [x] `rtk npm run build:weapp`
 
 **Dependencies:** Task 4
 
@@ -204,17 +204,17 @@ Upgrade branch `7-vizmo` from upstream Parse SDK `7.1.2` to latest stable upstre
 
 **Acceptance criteria:**
 
-- [ ] Mongo integration suite passes, or environment-only blocker is recorded with unit/build gates still green.
-- [ ] `npm pack --dry-run` reports `@vizmo/parse@8.6.0-1` and includes every declared shipped path.
-- [ ] Final upstream comparison contains only package identity/version, lockfile metadata needed by that identity, `saveAll` behavior/tests, and intentional merge metadata.
+- [x] Mongo integration suite ran with 5 recorded upstream timestamp-resolution flakes; unit/build gates remain green.
+- [x] `npm pack --dry-run` reports `@vizmo/parse@8.6.0-1` and includes every declared shipped path.
+- [x] Final upstream comparison contains only package identity/version, lockfile metadata needed by that identity, `saveAll` behavior/tests, MongoDB runner compatibility, and the `ws` security update.
 
 **Verification:**
 
-- [ ] `rtk npm run test:mongodb`
-- [ ] `rtk npm pack --dry-run`
-- [ ] Smoke imports for `@vizmo/parse`, `@vizmo/parse/node`, and `@vizmo/parse/react-native`
-- [ ] `rtk git diff --check upstream/release...HEAD`
-- [ ] `rtk git diff --stat upstream/release...HEAD`
+- [x] `rtk npm run test:mongodb`
+- [x] `rtk npm pack --dry-run`
+- [x] Smoke imports for `@vizmo/parse`, `@vizmo/parse/node`, and `@vizmo/parse/react-native`
+- [x] `rtk git diff --check upstream/release...HEAD`
+- [x] `rtk git diff --stat upstream/release...HEAD`
 
 **Dependencies:** Task 5
 
@@ -236,9 +236,9 @@ Upgrade branch `7-vizmo` from upstream Parse SDK `7.1.2` to latest stable upstre
 | Alpha-only changes accidentally enter release | Medium | Merge exact `284a268` / tag `8.6.0`, then audit ancestry. |
 | Generated build outputs create noisy commits | Low | Check project release convention; retain only expected tracked artifacts. |
 
-## Open Questions
+## Resolved Decisions
 
-- Confirm `8.6.0-1` is desired fork version and unused in target npm registry before publish.
-- Confirm batch-local `errors[].index` is relied upon; changing to input-array index would be a separate API change.
-- Confirm integration environment may start local MongoDB; otherwise treat integration as an explicit external prerequisite.
-- Publishing, pushing, tagging, and pull-request creation are outside this implementation plan and require separate approval.
+- Fork version is `8.6.0-1`; registry availability was confirmed.
+- `errors[].index` remains batch-local; changing it would be a separate API change.
+- Local integration uses MongoDB 8.0.x and Puppeteer Chrome 146.
+- Publishing, pushing, tagging, and pull-request creation remain outside this implementation.
