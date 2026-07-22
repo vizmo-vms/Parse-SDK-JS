@@ -1792,7 +1792,7 @@ describe('ParseObject', () => {
     const child = new ParseObject('Item');
     parent.set('child', child);
     child.set('parent', parent);
-    await expect(parent.save()).rejects.toThrowError(
+    await expect(parent.save()).rejects.toThrow(
       'Cannot create a pointer to an unsaved Object.'
     );
   });
@@ -1803,7 +1803,7 @@ describe('ParseObject', () => {
     const grandchild = new ParseObject('Item');
     parent.set('child', child);
     child.set('child', grandchild);
-    await expect(parent.save()).rejects.toThrowError(
+    await expect(parent.save()).rejects.toThrow(
       'Cannot create a pointer to an unsaved Object.'
     );
   });
@@ -1834,7 +1834,7 @@ describe('ParseObject', () => {
     mockFetch([{ status: 200, response: { count: 10 } }]);
     const p = new ParseObject('Person');
     p.id = '';
-    await expect(p.fetch()).rejects.toThrowError(
+    await expect(p.fetch()).rejects.toThrow(
       new ParseError(ParseError.MISSING_OBJECT_ID, 'Object does not have an ID')
     );
   });
@@ -2443,94 +2443,7 @@ describe('ParseObject', () => {
     expect(fetch.mock.calls[1][0]).toEqual('https://api.parse.com/1/batch');
   });
 
-  it('returns the first error when saving an array of objects', async () => {
-    expect.assertions(4);
-    const response = [
-      { success: { objectId: 'pid0' } },
-      { success: { objectId: 'pid1' } },
-      { success: { objectId: 'pid2' } },
-      { success: { objectId: 'pid3' } },
-      { success: { objectId: 'pid4' } },
-      { success: { objectId: 'pid5' } },
-      { error: { code: -1, error: 'first error' } },
-      { success: { objectId: 'pid7' } },
-      { success: { objectId: 'pid8' } },
-      { success: { objectId: 'pid9' } },
-      { success: { objectId: 'pid10' } },
-      { success: { objectId: 'pid11' } },
-      { success: { objectId: 'pid12' } },
-      { success: { objectId: 'pid13' } },
-      { success: { objectId: 'pid14' } },
-      { error: { code: -1, error: 'second error' } },
-      { success: { objectId: 'pid16' } },
-      { success: { objectId: 'pid17' } },
-      { success: { objectId: 'pid18' } },
-      { success: { objectId: 'pid19' } },
-    ];
-    mockFetch([{ status: 200, response }, { status: 200, response }]);
-    const objects = [];
-    for (let i = 0; i < 22; i++) {
-      objects[i] = new ParseObject('Person');
-    }
-
-    try {
-      await ParseObject.saveAll(objects);
-      expect('this should not be reached').toBe('reached');
-    } catch (error) {
-      expect(fetch.mock.calls.length).toBe(2);
-      expect(error.errors.length).toBe(2);
-      expect(error.code).toBe(-1);
-      expect(error.message).toBe('first error');
-    }
-  });
-
-  it('can saveAll with global batchSize', async () => {
-    mockFetch([
-      {
-        status: 200,
-        response: [
-          { success: { objectId: 'pid0' } },
-          { success: { objectId: 'pid1' } },
-          { success: { objectId: 'pid2' } },
-          { success: { objectId: 'pid3' } },
-          { success: { objectId: 'pid4' } },
-          { success: { objectId: 'pid5' } },
-          { success: { objectId: 'pid6' } },
-          { success: { objectId: 'pid7' } },
-          { success: { objectId: 'pid8' } },
-          { success: { objectId: 'pid9' } },
-          { success: { objectId: 'pid10' } },
-          { success: { objectId: 'pid11' } },
-          { success: { objectId: 'pid12' } },
-          { success: { objectId: 'pid13' } },
-          { success: { objectId: 'pid14' } },
-          { success: { objectId: 'pid15' } },
-          { success: { objectId: 'pid16' } },
-          { success: { objectId: 'pid17' } },
-          { success: { objectId: 'pid18' } },
-          { success: { objectId: 'pid19' } },
-        ],
-      },
-      {
-        status: 200,
-        response: [
-          { success: { objectId: 'pid20' } },
-          { success: { objectId: 'pid21' } },
-        ],
-      },
-    ]);
-
-    const objects = [];
-    for (let i = 0; i < 22; i++) {
-        objects[i] = new ParseObject('Person');
-    }
-    await ParseObject.saveAll(objects);
-    expect(fetch.mock.calls.length).toBe(2);
-    expect(fetch.mock.calls[0][1].method).toBe('POST');
-    expect(fetch.mock.calls[1][1].method).toBe('POST');
-  });
-
-  it('returns the first error along with list of errors when saving an array of objects', async () => {
+  it('returns all errors when saving an array of objects', async () => {
     mockFetch([
       {
         status: 200,
@@ -2570,15 +2483,20 @@ describe('ParseObject', () => {
     for (let i = 0; i < 22; i++) {
       objects[i] = new ParseObject('Person');
     }
-    
-    try {
-      await ParseObject.saveAll(objects);
-      expect('this should not be reached').toBe('reached');
-    } catch (error) {
-       expect(fetch.mock.calls.length).toBe(2);
-       expect(error.errors.length).toBe(3);
-       expect(error.message).toBe('first error');
-    }
+
+    await expect(ParseObject.saveAll(objects)).rejects.toEqual({
+      code: -1,
+      message: 'first error',
+      errors: [
+        { object: objects[6], index: 6, error: new ParseError(-1, 'first error') },
+        { object: objects[15], index: 15, error: new ParseError(-1, 'second error') },
+        { object: objects[20], index: 0, error: new ParseError(-1, 'third error') },
+      ],
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(objects[19].dirty()).toBe(false);
+    expect(objects[20].dirty()).toBe(true);
+    expect(objects[21].dirty()).toBe(false);
   });
 });
 
